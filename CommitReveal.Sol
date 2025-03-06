@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity >=0.8.2 <0.9.0;
+
+contract CommitReveal {
+
+  uint8 public max = 100;
+
+  struct Commit {
+    bytes32 commit;
+    uint64 block;
+    bool revealed;
+  }
+
+  mapping (address => Commit) public commits;
+
+  // ฟังก์ชันที่ใช้ในการบันทึกข้อมูล commit ของผู้เล่น
+  function commit(bytes32 dataHash) public {
+    commits[msg.sender].commit = dataHash;
+    commits[msg.sender].block = uint64(block.number);
+    commits[msg.sender].revealed = false;
+    emit CommitHash(msg.sender,commits[msg.sender].commit,commits[msg.sender].block);
+  }
+
+  event CommitHash(address sender, bytes32 dataHash, uint64 block);
+
+  // ฟังก์ชันที่ใช้ในการเปิดเผยข้อมูล commit ที่เก็บไว้และตรวจสอบผล
+  function reveal(bytes32 revealHash) public {
+    // ตรวจสอบว่าไม่ได้เปิดเผยข้อมูลไปแล้ว
+    require(commits[msg.sender].revealed == false, "Already revealed");
+    commits[msg.sender].revealed = true;
+    
+    // ตรวจสอบว่า hash ที่เปิดเผยตรงกับที่ commit
+    require(getHash(revealHash) == commits[msg.sender].commit, "Revealed hash does not match commit");
+
+    // ตรวจสอบว่า block ที่เปิดเผยต้องมากกว่า block ที่ commit
+    require(uint64(block.number) > commits[msg.sender].block, "Reveal happened in the same block");
+
+    // ตรวจสอบว่าเวลาในการเปิดเผยไม่เกินกำหนด (250 blocks)
+    require(uint64(block.number) <= commits[msg.sender].block + 250, "Reveal too late");
+
+    // ใช้ blockhash เพื่อคำนวณ random number โดยใช้ revealHash
+    bytes32 blockHash = blockhash(commits[msg.sender].block);
+    uint random = uint(keccak256(abi.encodePacked(blockHash, revealHash))) % max;
+    emit RevealHash(msg.sender, revealHash, random);
+  }
+
+  event RevealHash(address sender, bytes32 revealHash, uint random);
+
+  // ฟังก์ชันที่ใช้ในการสร้าง hash ของข้อมูล
+  function getHash(bytes32 data) public pure returns(bytes32){
+    return keccak256(abi.encodePacked(data));
+  }
+}

@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: MIT
+pragma solidity >=0.7.0 <0.9.0;
+
+contract RPSLS {
+    uint public numPlayer;
+    uint public reward;
+    mapping(address => uint) public player_choice; // 0 - Rock, 1 - Paper, 2 - Scissors, 3 - Lizard, 4 - Spock
+    address[] public players;
+    uint public numInput;
+
+    address[] private allowedAccounts = [
+        0x5B38Da6a701c568545dCfcB03FcB875f56beddC4,
+        0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2,
+        0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db,
+        0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB
+    ];
+
+    modifier onlyAllowed() {
+        bool isAllowed = false;
+        for (uint i = 0; i < allowedAccounts.length; i++) {
+            if (msg.sender == allowedAccounts[i]) {
+                isAllowed = true;
+                break;
+            }
+        }
+        require(isAllowed, "Unauthorized player");
+        _;
+    }
+
+    // ฟังก์ชันในการเพิ่มผู้เล่น
+    function addPlayer() public payable onlyAllowed {
+        require(numPlayer < 2, "Already 2 players");
+        require(msg.value == 1 ether, "Must send 1 ETH");
+
+        if (numPlayer == 1) {
+            require(msg.sender != players[0], "Same player cannot join twice");
+        }
+
+        reward += msg.value;
+        players.push(msg.sender);
+        numPlayer++;
+    }
+
+    // ฟังก์ชันในการรับข้อมูลการเลือกของผู้เล่น
+    function input(uint choice) public onlyAllowed {
+        require(numPlayer == 2, "Need 2 players to start");
+        require(choice >= 0 && choice <= 4, "Invalid choice");
+        require(player_choice[msg.sender] == 0, "Already chosen");
+
+        player_choice[msg.sender] = choice;
+        numInput++;
+
+        if (numInput == 2) {
+            _checkWinnerAndPay();
+        }
+    }
+
+    // ฟังก์ชันในการตรวจสอบผู้ชนะและจ่ายรางวัล
+    function _checkWinnerAndPay() private {
+        uint p0Choice = player_choice[players[0]];
+        uint p1Choice = player_choice[players[1]];
+        address payable account0 = payable(players[0]);
+        address payable account1 = payable(players[1]);
+
+        if (_isWinner(p0Choice, p1Choice)) {
+            (bool sent, ) = account0.call{value: reward}("");
+            require(sent, "Failed to send Ether");
+        } else if (_isWinner(p1Choice, p0Choice)) {
+            (bool sent, ) = account1.call{value: reward}("");
+            require(sent, "Failed to send Ether");
+        } else {
+            (bool sent0, ) = account0.call{value: reward / 2}("");
+            require(sent0, "Failed to send Ether to player 1");
+
+            (bool sent1, ) = account1.call{value: reward / 2}("");
+            require(sent1, "Failed to send Ether to player 2");
+        }
+
+        _resetGame();
+    }
+
+    // ฟังก์ชันตรวจสอบว่าใครเป็นผู้ชนะ
+    function _isWinner(uint choice1, uint choice2) private pure returns (bool) {
+        return (choice1 == 0 && (choice2 == 2 || choice2 == 3)) || // Rock beats Scissors, Lizard
+               (choice1 == 1 && (choice2 == 0 || choice2 == 4)) || // Paper beats Rock, Spock
+               (choice1 == 2 && (choice2 == 1 || choice2 == 3)) || // Scissors beats Paper, Lizard
+               (choice1 == 3 && (choice2 == 4 || choice2 == 1)) || // Lizard beats Spock, Paper
+               (choice1 == 4 && (choice2 == 2 || choice2 == 0));   // Spock beats Scissors, Rock
+    }
+
+    // ฟังก์ชันในการรีเซ็ตเกม
+    function _resetGame() private {
+        delete player_choice[players[0]];
+        delete player_choice[players[1]];
+        delete players;
+        numPlayer = 0;
+        numInput = 0;
+        reward = 0;
+    }
+}
